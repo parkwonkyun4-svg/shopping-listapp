@@ -238,9 +238,13 @@
     <button class="clear-btn" id="clearBtn">완료된 항목 모두 삭제</button>
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>
-    const STORAGE_KEY = 'shopping_list_v1';
-    let items = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+    const SUPABASE_URL = 'https://nmdylsviosbkplrgkpxd.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5tZHlsc3Zpb3Nia3BscmdrcHhkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM5MTY1MTQsImV4cCI6MjA4OTQ5MjUxNH0.InS-Wih8a_LpnwPlPgB_oNhqT4HfkrF9Pus5KJ9YiKo';
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    let items = [];
     let filter = 'all';
 
     const listEl = document.getElementById('list');
@@ -250,10 +254,6 @@
     const totalEl = document.getElementById('totalCount');
     const checkedEl = document.getElementById('checkedCount');
     const remainEl = document.getElementById('remainCount');
-
-    function save() {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
-    }
 
     function render() {
       const filtered = items.filter(item => {
@@ -298,36 +298,63 @@
       remainEl.textContent = items.length - checked;
     }
 
-    function addItem() {
+    async function loadItems() {
+      const { data, error } = await supabase
+        .from('shopping_items')
+        .select('*')
+        .order('created_at', { ascending: true });
+      if (!error) {
+        items = data;
+        render();
+      }
+    }
+
+    async function addItem() {
       const text = inputEl.value.trim();
       if (!text) return;
-      items.push({ id: Date.now(), text, checked: false });
-      inputEl.value = '';
-      save();
-      render();
-      inputEl.focus();
+      const newItem = { id: Date.now(), text, checked: false };
+      const { error } = await supabase.from('shopping_items').insert(newItem);
+      if (!error) {
+        items.push(newItem);
+        inputEl.value = '';
+        render();
+        inputEl.focus();
+      }
     }
 
-    function toggle(id) {
+    async function toggle(id) {
       const item = items.find(i => i.id === id);
-      if (item) item.checked = !item.checked;
-      save();
-      render();
+      if (!item) return;
+      const { error } = await supabase
+        .from('shopping_items')
+        .update({ checked: !item.checked })
+        .eq('id', id);
+      if (!error) {
+        item.checked = !item.checked;
+        render();
+      }
     }
 
-    function remove(id) {
-      items = items.filter(i => i.id !== id);
-      save();
-      render();
+    async function remove(id) {
+      const { error } = await supabase.from('shopping_items').delete().eq('id', id);
+      if (!error) {
+        items = items.filter(i => i.id !== id);
+        render();
+      }
     }
 
     addBtn.addEventListener('click', addItem);
     inputEl.addEventListener('keydown', e => { if (e.key === 'Enter') addItem(); });
 
-    clearBtn.addEventListener('click', () => {
-      if (items.some(i => i.checked)) {
+    clearBtn.addEventListener('click', async () => {
+      const checkedIds = items.filter(i => i.checked).map(i => i.id);
+      if (checkedIds.length === 0) return;
+      const { error } = await supabase
+        .from('shopping_items')
+        .delete()
+        .in('id', checkedIds);
+      if (!error) {
         items = items.filter(i => !i.checked);
-        save();
         render();
       }
     });
@@ -341,7 +368,7 @@
       });
     });
 
-    render();
+    loadItems();
   </script>
 </body>
 </html>
